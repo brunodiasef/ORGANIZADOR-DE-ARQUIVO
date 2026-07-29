@@ -150,7 +150,10 @@ app.post('/api/files', upload.array('files'), async (req, res) => {
     const folderPath = cleanPath(req.body.path);
     for (const f of req.files) {
       const filePath = folderPath ? folderPath + '/' + f.originalname : f.originalname;
-      const { error } = await supabase.storage.from(BUCKET).upload(filePath, f.buffer, { upsert: true });
+      const { error } = await supabase.storage.from(BUCKET).upload(filePath, f.buffer, {
+        upsert: true,
+        contentType: f.mimetype || 'application/octet-stream',
+      });
       if (error) throw new Error(error.message);
     }
     res.json({ ok: true });
@@ -167,7 +170,8 @@ app.get('/api/files/download', async (req, res) => {
     const { data, error } = await supabase.storage.from(BUCKET).download(filePath);
     if (error) throw new Error(error.message);
     const buf = Buffer.from(await data.arrayBuffer());
-    res.setHeader('Content-Disposition', 'attachment; filename="' + name + '"');
+    if (data.type) res.type(data.type);
+    res.setHeader('Content-Disposition', 'inline; filename="' + name + '"');
     res.send(buf);
   } catch (e) {
     res.status(500).json({ error: e.message });
