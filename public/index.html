@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Organizador Escolar</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap');
+  :root{
+    --paper:#F7F3EA; --ink:#242222; --navy:#26344D; --mustard:#D9A441; --teal:#3E7C7C; --line:#DCD3BF;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;font-family:'Inter',sans-serif;background:var(--paper);color:var(--ink);}
+
+  /* ---- Login ---- */
+  #loginScreen{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;
+  }
+  #loginScreen h1{font-family:'Fraunces',serif;font-size:1.6rem;margin:0;color:var(--navy);}
+  #loginScreen input{
+    padding:11px 14px;border:1px solid var(--line);border-radius:8px;font-size:.95rem;width:240px;font-family:'Inter',sans-serif;
+  }
+  #loginScreen button{
+    background:var(--navy);color:#fff;border:none;padding:11px 18px;border-radius:8px;font-weight:600;cursor:pointer;font-size:.9rem;
+  }
+  #loginError{color:#B23B2A;font-size:.82rem;min-height:1em;}
+
+  /* ---- App ---- */
+  header.bar{background:var(--navy);color:#F1EEE4;padding:16px 32px;display:flex;justify-content:space-between;align-items:center;}
+  header.bar h1{font-family:'Fraunces',serif;font-size:1.25rem;margin:0;}
+  .btn{background:var(--mustard);color:#26344D;border:none;padding:9px 16px;border-radius:7px;font-size:.84rem;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
+  .btn.logout{background:transparent;color:#F1EEE4;border:1px solid rgba(255,255,255,.35);}
+
+  .layout{display:flex;min-height:calc(100vh - 60px);flex-wrap:wrap;}
+  aside{width:250px;background:var(--navy);color:#F1EEE4;padding:24px 16px;flex-shrink:0;overflow-y:auto;}
+  aside p.sub{font-size:.72rem;opacity:.6;margin:0 0 16px;text-transform:uppercase;letter-spacing:.08em;}
+  #folderTree ul{list-style:none;margin:0;padding-left:14px;}
+  #folderTree > ul{padding-left:0;}
+  .folder-row{display:flex;align-items:center;gap:6px;padding:7px 6px;border-radius:6px;cursor:pointer;font-size:.87rem;opacity:.85;}
+  .folder-row:hover{background:rgba(255,255,255,.06);}
+  .folder-row.active{background:rgba(217,164,65,.18);color:var(--mustard);opacity:1;font-weight:600;}
+  .twisty{width:16px;flex-shrink:0;font-size:1.05rem;opacity:.7;text-align:center;}
+  .twisty.empty{visibility:hidden;}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--mustard);flex-shrink:0;}
+  .fname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .mini-add,.mini-del{background:none;border:none;color:#F1EEE4;opacity:0;cursor:pointer;font-size:1.15rem;padding:0 5px;line-height:1;}
+  .mini-del{color:#E8998A;font-size:1rem;}
+  .folder-row:hover .mini-add,.folder-row:hover .mini-del{opacity:.75;}
+  .mini-add:hover,.mini-del:hover{opacity:1 !important;}
+  .add-folder{margin-top:16px;font-size:.8rem;color:#F1EEE4;opacity:.7;border:1px dashed rgba(255,255,255,.3);border-radius:6px;padding:8px 10px;text-align:center;cursor:pointer;background:none;width:100%;font-family:'Inter',sans-serif;}
+  .add-folder:hover{opacity:1;}
+
+  main{flex:1;padding:28px 32px;min-width:280px;}
+  .breadcrumb{font-size:.78rem;color:#9A927C;margin-bottom:6px;}
+  .breadcrumb span{cursor:pointer;}
+  .breadcrumb span:hover{color:var(--teal);text-decoration:underline;}
+  .top-row{display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:10px;margin-bottom:22px;border-bottom:1px solid var(--line);padding-bottom:16px;}
+  .top-row h2{font-family:'Fraunces',serif;font-size:1.6rem;margin:0;}
+  .top-row span.count{font-size:.82rem;color:#7A7566;}
+
+  .selection-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;background:var(--navy);color:#F1EEE4;padding:10px 16px;border-radius:8px;margin-bottom:16px;font-size:.84rem;}
+  .selection-bar span{margin-right:auto;font-weight:600;}
+  .selection-bar button{background:rgba(255,255,255,.12);color:#F1EEE4;border:1px solid rgba(255,255,255,.25);padding:6px 12px;border-radius:6px;font-size:.78rem;cursor:pointer;font-family:'Inter',sans-serif;}
+  .selection-bar button:hover{background:rgba(255,255,255,.22);}
+  .selection-bar button.danger-bar{background:#B23B2A;border-color:#B23B2A;}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;}
+  .card{background:#FFFDF8;border:1px solid var(--line);border-radius:10px;padding:16px;position:relative;transition:transform .12s ease,border-color .12s ease;}
+  .card.selected{border-color:var(--teal);box-shadow:0 0 0 2px rgba(62,124,124,.25);}
+  .card:hover{transform:translateY(-2px);border-color:var(--teal);}
+  .card .select-check{position:absolute;top:12px;right:12px;width:18px;height:18px;cursor:pointer;}
+  .card .icon{width:38px;height:38px;border-radius:8px;color:#fff;display:flex;align-items:center;justify-content:center;font-size:.7rem;font-weight:700;margin-bottom:12px;}
+  .card h3{font-size:.9rem;margin:0 0 4px;font-weight:600;word-break:break-word;}
+  .card .path{font-size:.7rem;color:#9A927C;margin-bottom:12px;word-break:break-all;}
+  .card .row{display:flex;flex-wrap:wrap;gap:6px;}
+  .card .row button{flex:1 1 auto;font-size:.72rem;padding:6px 4px;border-radius:6px;border:1px solid var(--line);background:transparent;cursor:pointer;font-family:'Inter',sans-serif;}
+  .card .row button.primary{background:var(--navy);color:#fff;border-color:var(--navy);}
+  .card .row button.danger{color:#B23B2A;border-color:#E8C4BC;}
+  .empty{color:#9A927C;font-size:.9rem;}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <h1>📚 Meus Estudos</h1>
+  <input type="password" id="passwordInput" placeholder="Senha de acesso">
+  <button id="loginBtn">Entrar</button>
+  <div id="loginError"></div>
+</div>
+
+<div id="app" style="display:none;">
+  <header class="bar">
+    <h1>📚 Meus Estudos</h1>
+    <button class="btn logout" id="logoutBtn">Sair</button>
+  </header>
+
+  <div class="layout">
+    <aside>
+      <p class="sub">Pastas</p>
+      <div id="folderTree"></div>
+      <button class="add-folder" id="addFolderBtn">+ Nova pasta (nível principal)</button>
+    </aside>
+
+    <main>
+      <div class="breadcrumb" id="breadcrumb"></div>
+      <div class="top-row">
+        <div>
+          <h2 id="folderTitle">—</h2>
+          <span class="count" id="fileCount"></span>
+        </div>
+        <button class="btn" id="addFileBtn" style="background:var(--teal);color:#fff;">+ Adicionar arquivos</button>
+        <input type="file" id="fileInput" multiple style="display:none;">
+      </div>
+
+      <div class="selection-bar" id="selectionBar" style="display:none;">
+        <span id="selectionCount"></span>
+        <button id="selectAllBtn">Selecionar todos</button>
+        <button id="moveSelectedBtn">Mover selecionados</button>
+        <button id="deleteSelectedBtn" class="danger-bar">Excluir selecionados</button>
+        <button id="clearSelectionBtn">Cancelar</button>
+      </div>
+
+      <div class="grid" id="grid"></div>
+    </main>
+  </div>
+</div>
+
+<script>
+const API = ''; // mesmo domínio do servidor
+let token = localStorage.getItem('token') || null;
+
+let currentPath = null;     // array de nomes
+let expandedPaths = new Set();
+let treeData = [];
+let currentFilesMap = new Map();
+let selectedFiles = new Set();
+
+const els = {
+  loginScreen: document.getElementById('loginScreen'),
+  app: document.getElementById('app'),
+  passwordInput: document.getElementById('passwordInput'),
+  loginBtn: document.getElementById('loginBtn'),
+  loginError: document.getElementById('loginError'),
+  logoutBtn: document.getElementById('logoutBtn'),
+  folderTree: document.getElementById('folderTree'),
+  addFolderBtn: document.getElementById('addFolderBtn'),
+  grid: document.getElementById('grid'),
+  breadcrumb: document.getElementById('breadcrumb'),
+  folderTitle: document.getElementById('folderTitle'),
+  fileCount: document.getElementById('fileCount'),
+  addFileBtn: document.getElementById('addFileBtn'),
+  fileInput: document.getElementById('fileInput'),
+  selectionBar: document.getElementById('selectionBar'),
+  selectionCount: document.getElementById('selectionCount'),
+  selectAllBtn: document.getElementById('selectAllBtn'),
+  moveSelectedBtn: document.getElementById('moveSelectedBtn'),
+  deleteSelectedBtn: document.getElementById('deleteSelectedBtn'),
+  clearSelectionBtn: document.getElementById('clearSelectionBtn'),
+};
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function api(path, options = {}){
+  const res = await fetch(API + path, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      ...(token ? { Authorization: 'Bearer ' + token } : {}),
+    },
+  });
+  if(res.status === 401){
+    logout();
+    throw new Error('Sessão expirada, faça login de novo');
+  }
+  if(!res.ok){
+    const data = await res.json().catch(()=>({error:'Erro desconhecido'}));
+    throw new Error(data.error || 'Erro desconhecido');
+  }
+  return res;
+}
+
+// ---------- Login ----------
+async function login(){
+  els.loginError.textContent = '';
+  const password = els.passwordInput.value;
+  try{
+    const res = await fetch(API + '/api/login', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password})
+    });
+    if(!res.ok){ els.loginError.textContent = 'Senha incorreta.'; return; }
+    const data = await res.json();
+    token = data.token;
+    localStorage.setItem('token', token);
+    showApp();
+  }catch(e){
+    els.loginError.textContent = 'Não consegui falar com o servidor: ' + e.message;
+  }
+}
+els.loginBtn.onclick = login;
+els.passwordInput.onkeydown = e=>{ if(e.key === 'Enter') login(); };
+
+function logout(){
+  token = null;
+  localStorage.removeItem('token');
+  els.app.style.display = 'none';
+  els.loginScreen.style.display = 'flex';
+}
+els.logoutBtn.onclick = logout;
+
+async function showApp(){
+  els.loginScreen.style.display = 'none';
+  els.app.style.display = 'block';
+  await renderTree();
+}
+
+// ---------- Árvore ----------
+function findNode(nodes, pathArr){
+  let list = nodes, node = null;
+  for(const name of pathArr){
+    node = list.find(n=> n.name === name);
+    if(!node) return null;
+    list = node.children;
+  }
+  return node;
+}
+
+async function loadTree(){
+  const res = await api('/api/tree');
+  const data = await res.json();
+  treeData = data.tree;
+}
+
+function buildTreeUl(nodes, pathArr){
+  const ul = document.createElement('ul');
+  for(const node of nodes){
+    const childPath = [...pathArr, node.name];
+    const childKey = childPath.join('/');
+    const isExpanded = expandedPaths.has(childKey);
+    const isActive = currentPath && currentPath.join('/') === childKey;
+    const hasChildren = node.children.length > 0;
+
+    const li = document.createElement('li');
+    const row = document.createElement('div');
+    row.className = 'folder-row' + (isActive ? ' active' : '');
+    row.innerHTML = `
+      <span class="twisty ${hasChildren ? '' : 'empty'}">${isExpanded ? '▾' : '▸'}</span>
+      <span class="dot"></span>
+      <span class="fname">${escapeHtml(node.name)}</span>
+      <button class="mini-add" title="Nova subpasta">+</button>
+      <button class="mini-del" title="Excluir pasta">✕</button>
+    `;
+    row.querySelector('.twisty').onclick = (e)=>{
+      e.stopPropagation();
+      if(!hasChildren) return;
+      expandedPaths.has(childKey) ? expandedPaths.delete(childKey) : expandedPaths.add(childKey);
+      renderTree(false);
+    };
+    row.querySelector('.fname').onclick = ()=> selectFolder(childPath);
+    row.querySelector('.mini-add').onclick = async (e)=>{
+      e.stopPropagation();
+      const name = prompt('Nome da subpasta dentro de "' + node.name + '":');
+      if(!name) return;
+      try{
+        await api('/api/folder', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: pathArr.join('/'), name})});
+        expandedPaths.add(childKey);
+        await renderTree(false);
+      }catch(err){ alert('Não consegui criar a subpasta: ' + err.message); }
+    };
+    row.querySelector('.mini-del').onclick = async (e)=>{
+      e.stopPropagation();
+      if(!confirm('Excluir a pasta "' + node.name + '" e tudo que tem dentro dela? Essa ação não pode ser desfeita.')) return;
+      try{
+        await api('/api/folder', {method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: childKey})});
+        expandedPaths.delete(childKey);
+        if(currentPath && currentPath.join('/').startsWith(childKey)) currentPath = null;
+        await renderTree();
+      }catch(err){ alert('Não consegui excluir: ' + err.message); }
+    };
+
+    li.appendChild(row);
+    if(isExpanded && hasChildren){
+      li.appendChild(buildTreeUl(node.children, childPath));
+    }
+    ul.appendChild(li);
+  }
+  return ul;
+}
+
+async function renderTree(pickDefault = true){
+  await loadTree();
+  els.folderTree.innerHTML = '';
+  els.folderTree.appendChild(buildTreeUl(treeData, []));
+
+  if(currentPath === null && pickDefault){
+    if(treeData.length){
+      selectFolder([treeData[0].name]);
+      return;
+    } else {
+      els.folderTitle.textContent = 'Nenhuma pasta ainda';
+      els.fileCount.textContent = '';
+      els.breadcrumb.textContent = '';
+      els.grid.innerHTML = '<p class="empty">Clique em "+ Nova pasta" para começar.</p>';
+    }
+  } else if(currentPath){
+    renderBreadcrumb();
+    await renderFiles();
+  }
+}
+
+async function selectFolder(pathArr){
+  currentPath = pathArr;
+  renderBreadcrumb();
+  els.folderTitle.textContent = pathArr[pathArr.length - 1];
+  await renderFiles();
+  await renderTree(false);
+}
+
+function renderBreadcrumb(){
+  els.breadcrumb.innerHTML = '';
+  if(!currentPath) return;
+  currentPath.forEach((name, i)=>{
+    const span = document.createElement('span');
+    span.textContent = name;
+    span.onclick = ()=> selectFolder(currentPath.slice(0, i+1));
+    els.breadcrumb.appendChild(span);
+    if(i < currentPath.length - 1) els.breadcrumb.appendChild(document.createTextNode(' / '));
+  });
+}
+
+els.addFolderBtn.onclick = async ()=>{
+  const name = prompt('Nome da nova pasta (nível principal):');
+  if(!name) return;
+  try{
+    await api('/api/folder', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path:'', name})});
+    await renderTree(false);
+  }catch(e){ alert('Não consegui criar a pasta: ' + e.message); }
+};
+
+// ---------- Arquivos ----------
+function extIcon(name){
+  const ext = (name.split('.').pop() || '').toUpperCase();
+  const map = {PDF:'#C0533E',DOC:'#3A5FA0',DOCX:'#3A5FA0',XLS:'#3E7C7C',XLSX:'#3E7C7C',PPT:'#B4622B',PPTX:'#B4622B',PNG:'#7A5EA8',JPG:'#7A5EA8',JPEG:'#7A5EA8',TXT:'#6B7280'};
+  return {label: ext.slice(0,4) || 'ARQ', color: map[ext] || '#D9A441'};
+}
+
+async function renderFiles(){
+  els.grid.innerHTML = '';
+  selectedFiles.clear();
+  currentFilesMap = new Map();
+  updateSelectionBar();
+  if(!currentPath) return;
+  const res = await api('/api/files?path=' + encodeURIComponent(currentPath.join('/')));
+  const data = await res.json();
+  els.fileCount.textContent = data.files.length + (data.files.length===1 ? ' arquivo' : ' arquivos');
+  if(!data.files.length){
+    els.grid.innerHTML = '<p class="empty">Nenhum arquivo nesta pasta ainda.</p>';
+    return;
+  }
+  for(const f of data.files){
+    currentFilesMap.set(f.name, f);
+    els.grid.appendChild(buildCard(f.name));
+  }
+}
+
+function buildCard(name){
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.fname = name;
+  const {label, color} = extIcon(name);
+  card.innerHTML = `
+    <input type="checkbox" class="select-check" title="Selecionar">
+    <div class="icon" style="background:${color}">${label}</div>
+    <h3>${escapeHtml(name)}</h3>
+    <div class="path">${escapeHtml(currentPath.join(' / '))} / ${escapeHtml(name)}</div>
+    <div class="row">
+      <button class="primary" data-act="abrir">Abrir</button>
+      <button data-act="renomear">Renomear</button>
+      <button data-act="mover">Mover</button>
+      <button class="danger" data-act="excluir">Excluir</button>
+    </div>
+  `;
+  card.querySelector('.select-check').onchange = (e)=> toggleFileSelection(name, e.target.checked);
+  card.querySelector('[data-act="abrir"]').onclick = ()=> abrirArquivo(name);
+  card.querySelector('[data-act="renomear"]').onclick = ()=> renomearArquivo(name);
+  card.querySelector('[data-act="mover"]').onclick = ()=> moverArquivos([name]);
+  card.querySelector('[data-act="excluir"]').onclick = ()=> excluirArquivos([name]);
+  return card;
+}
+
+async function abrirArquivo(name){
+  try{
+    const res = await api('/api/files/download?path=' + encodeURIComponent(currentPath.join('/')) + '&name=' + encodeURIComponent(name));
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  }catch(e){ alert('Não consegui abrir: ' + e.message); }
+}
+
+async function renomearArquivo(oldName){
+  const newName = prompt('Novo nome do arquivo:', oldName);
+  if(!newName || newName === oldName) return;
+  try{
+    await api('/api/files/rename', {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: currentPath.join('/'), oldName, newName})});
+    await renderFiles();
+  }catch(e){ alert('Não consegui renomear: ' + e.message); }
+}
+
+async function excluirArquivos(names){
+  if(!confirm('Excluir ' + names.length + ' arquivo(s) de verdade? Essa ação não pode ser desfeita.\n\n' + names.join('\n'))) return;
+  try{
+    await api('/api/files', {method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: currentPath.join('/'), names})});
+    await renderFiles();
+  }catch(e){ alert('Não consegui excluir: ' + e.message); }
+}
+
+function flattenFolders(nodes, pathArr, out){
+  for(const node of nodes){
+    const p = [...pathArr, node.name];
+    out.push(p.join(' / '));
+    flattenFolders(node.children, p, out);
+  }
+}
+
+async function moverArquivos(names){
+  const options = [];
+  flattenFolders(treeData, [], options);
+  const currentKey = currentPath.join(' / ');
+  const filtered = options.filter(p=> p !== currentKey);
+  if(!filtered.length){ alert('Crie outra pasta primeiro para poder mover arquivos.'); return; }
+  const listText = filtered.map((p,i)=> (i+1) + '. ' + p).join('\n');
+  const escolha = prompt('Mover ' + names.length + ' arquivo(s) para qual pasta? Digite o número:\n\n' + listText);
+  if(!escolha) return;
+  const idx = parseInt(escolha, 10) - 1;
+  if(isNaN(idx) || !filtered[idx]) return;
+  const destPath = filtered[idx].split(' / ').join('/');
+  try{
+    await api('/api/files/move', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: currentPath.join('/'), names, destPath})});
+    await renderFiles();
+  }catch(e){ alert('Não consegui mover: ' + e.message); }
+}
+
+// ---------- Seleção múltipla ----------
+function updateSelectionBar(){
+  const n = selectedFiles.size;
+  els.selectionBar.style.display = n > 0 ? 'flex' : 'none';
+  els.selectionCount.textContent = n + (n === 1 ? ' arquivo selecionado' : ' arquivos selecionados');
+}
+
+function toggleFileSelection(name, checked){
+  checked ? selectedFiles.add(name) : selectedFiles.delete(name);
+  const card = els.grid.querySelector('[data-fname="' + CSS.escape(name) + '"]');
+  if(card) card.classList.toggle('selected', checked);
+  updateSelectionBar();
+}
+
+els.selectAllBtn.onclick = ()=>{
+  currentFilesMap.forEach((_, name)=>{
+    selectedFiles.add(name);
+    const card = els.grid.querySelector('[data-fname="' + CSS.escape(name) + '"]');
+    if(card){ card.classList.add('selected'); card.querySelector('.select-check').checked = true; }
+  });
+  updateSelectionBar();
+};
+
+els.clearSelectionBtn.onclick = ()=>{
+  selectedFiles.clear();
+  els.grid.querySelectorAll('.select-check').forEach(cb=> cb.checked = false);
+  els.grid.querySelectorAll('.card').forEach(c=> c.classList.remove('selected'));
+  updateSelectionBar();
+};
+
+els.deleteSelectedBtn.onclick = ()=> excluirArquivos([...selectedFiles]);
+els.moveSelectedBtn.onclick = ()=> moverArquivos([...selectedFiles]);
+
+// ---------- Adicionar arquivos ----------
+els.addFileBtn.onclick = ()=> els.fileInput.click();
+els.fileInput.onchange = async (e)=>{
+  const files = [...e.target.files];
+  if(!files.length || !currentPath) return;
+  const form = new FormData();
+  form.append('path', currentPath.join('/'));
+  files.forEach(f=> form.append('files', f));
+  try{
+    await api('/api/files', {method:'POST', body: form});
+    await renderFiles();
+  }catch(e){ alert('Não consegui enviar: ' + e.message); }
+  els.fileInput.value = '';
+};
+
+// ---------- Início ----------
+if(token){ showApp(); }
+</script>
+</body>
+</html>
