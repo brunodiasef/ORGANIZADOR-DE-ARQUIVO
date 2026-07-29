@@ -263,7 +263,7 @@ function buildTreeUl(nodes, pathArr){
       const name = prompt('Nome da subpasta dentro de "' + node.name + '":');
       if(!name) return;
       try{
-        await api('/api/folder', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: pathArr.join('/'), name})});
+        await api('/api/folder', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: childPath.join('/'), name})});
         expandedPaths.add(childKey);
         await renderTree(false);
       }catch(err){ alert('Não consegui criar a subpasta: ' + err.message); }
