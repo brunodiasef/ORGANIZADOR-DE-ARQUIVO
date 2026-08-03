@@ -24,6 +24,31 @@ function cleanPath(p) {
     .join('/');
 }
 
+// O Supabase Storage só aceita um conjunto limitado de caracteres nas chaves.
+// Para permitir qualquer nome de pasta/arquivo (acentos, º, espaços, etc.),
+// cada "segmento" do caminho é codificado ao falar com o Supabase, e decodificado
+// de volta ao mostrar para o usuário.
+function encodePath(logicalPath) {
+  return (logicalPath || '')
+    .split('/')
+    .filter(Boolean)
+    .map(seg => encodeURIComponent(seg))
+    .join('/');
+}
+function decodePath(storageKey) {
+  return (storageKey || '')
+    .split('/')
+    .filter(Boolean)
+    .map(seg => decodeURIComponent(seg))
+    .join('/');
+}
+function encodeName(name) {
+  return encodeURIComponent(name);
+}
+function decodeName(name) {
+  return decodeURIComponent(name);
+}
+
 function authMiddleware(req, res, next) {
   const auth = req.headers.authorization || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
@@ -45,9 +70,9 @@ app.post('/api/login', (req, res) => {
 
 app.use('/api', authMiddleware);
 
-// ---------- Helpers Supabase ----------
-async function listFolder(prefix) {
-  const { data, error } = await supabase.storage.from(BUCKET).list(prefix, {
+// ---------- Helpers Supabase (trabalham em "storage key", ou seja, caminho já codificado) ----------
+async function listFolder(storagePrefix) {
+  const { data, error } = await supabase.storage.from(BUCKET).list(storagePrefix, {
     limit: 1000,
     sortBy: { column: 'name', order: 'asc' },
   });
@@ -56,26 +81,29 @@ async function listFolder(prefix) {
 }
 
 function isFolderEntry(entry) {
-  // No Supabase Storage, "pastas" aparecem na listagem sem metadata (não são arquivos reais)
   return entry.id === null && !entry.metadata;
 }
 
-async function buildTree(prefix) {
-  const entries = await listFolder(prefix);
+async function buildTree(storagePrefix) {
+  const entries = await listFolder(storagePrefix);
   const folders = entries.filter(isFolderEntry).filter(e => e.name !== PLACEHOLDER);
   folders.sort((a, b) => a.name.localeCompare(b.name));
   const out = [];
   for (const f of folders) {
-    const childPrefix = prefix ? prefix + '/' + f.name : f.name;
-    out.push({ name: f.name, path: childPrefix, children: await buildTree(childPrefix) });
+    const childStorage = storagePrefix ? storagePrefix + '/' + f.name : f.name;
+    out.push({
+      name: decodeName(f.name),
+      path: decodePath(childStorage),
+      children: await buildTree(childStorage),
+    });
   }
   return out;
 }
 
-async function collectAllPaths(prefix, out) {
-  const entries = await listFolder(prefix);
+async function collectAllPaths(storagePrefix, out) {
+  const entries = await listFolder(storagePrefix);
   for (const e of entries) {
-    const full = prefix ? prefix + '/' + e.name : e.name;
+    const full = storagePrefix ? storagePrefix + '/' + e.name : e.name;
     if (isFolderEntry(e)) {
       await collectAllPaths(full, out);
     } else {
@@ -95,11 +123,11 @@ app.get('/api/tree', async (req, res) => {
 
 app.get('/api/files', async (req, res) => {
   try {
-    const prefix = cleanPath(req.query.path);
-    const entries = await listFolder(prefix);
+    const storagePrefix = encodePath(cleanPath(req.query.path));
+    const entries = await listFolder(storagePrefix);
     const files = entries
       .filter(e => !isFolderEntry(e) && e.name !== PLACEHOLDER)
-      .map(e => ({ name: e.name, size: e.metadata?.size || 0, modified: e.updated_at || e.created_at }));
+      .map(e => ({ name: decodeName(e.name), size: e.metadata?.size || 0, modified: e.updated_at || e.created_at }));
     files.sort((a, b) => a.name.localeCompare(b.name));
     res.json({ files });
   } catch (e) {
@@ -109,13 +137,14 @@ app.get('/api/files', async (req, res) => {
 
 app.post('/api/folder', async (req, res) => {
   try {
-    const parent = cleanPath(req.body.path);
+    const parentLogical = cleanPath(req.body.path);
     const name = (req.body.name || '').trim();
     if (!name || name.includes('/') || name.includes('\\')) {
       return res.status(400).json({ error: 'Nome de pasta inválido' });
     }
-    const folderPath = parent ? parent + '/' + name : name;
-    const { error } = await supabase.storage.from(BUCKET).upload(folderPath + '/' + PLACEHOLDER, Buffer.from(''), {
+    const parentStorage = encodePath(parentLogical);
+    const folderStorageKey = parentStorage ? parentStorage + '/' + encodeName(name) : encodeName(name);
+    const { error } = await supabase.storage.from(BUCKET).upload(folderStorageKey + '/' + PLACEHOLDER, Buffer.from(''), {
       contentType: 'text/plain',
       upsert: false,
     });
@@ -128,11 +157,12 @@ app.post('/api/folder', async (req, res) => {
 
 app.delete('/api/folder', async (req, res) => {
   try {
-    const folderPath = cleanPath(req.body.path);
-    if (!folderPath) return res.status(400).json({ error: 'Caminho obrigatório' });
+    const logicalPath = cleanPath(req.body.path);
+    if (!logicalPath) return res.status(400).json({ error: 'Caminho obrigatório' });
+    const storageKey = encodePath(logicalPath);
     const all = [];
-    await collectAllPaths(folderPath, all);
-    all.push(folderPath + '/' + PLACEHOLDER);
+    await collectAllPaths(storageKey, all);
+    all.push(storageKey + '/' + PLACEHOLDER);
     if (all.length) {
       const { error } = await supabase.storage.from(BUCKET).remove(all);
       if (error) throw new Error(error.message);
@@ -147,9 +177,9 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200
 
 app.post('/api/files', upload.array('files'), async (req, res) => {
   try {
-    const folderPath = cleanPath(req.body.path);
+    const storageKey = encodePath(cleanPath(req.body.path));
     for (const f of req.files) {
-      const filePath = folderPath ? folderPath + '/' + f.originalname : f.originalname;
+      const filePath = storageKey ? storageKey + '/' + encodeName(f.originalname) : encodeName(f.originalname);
       const { error } = await supabase.storage.from(BUCKET).upload(filePath, f.buffer, {
         upsert: true,
         contentType: f.mimetype || 'application/octet-stream',
@@ -164,9 +194,9 @@ app.post('/api/files', upload.array('files'), async (req, res) => {
 
 app.get('/api/files/download', async (req, res) => {
   try {
-    const folderPath = cleanPath(req.query.path);
+    const storageKey = encodePath(cleanPath(req.query.path));
     const name = req.query.name;
-    const filePath = folderPath ? folderPath + '/' + name : name;
+    const filePath = storageKey ? storageKey + '/' + encodeName(name) : encodeName(name);
     const { data, error } = await supabase.storage.from(BUCKET).download(filePath);
     if (error) throw new Error(error.message);
     const buf = Buffer.from(await data.arrayBuffer());
@@ -180,9 +210,9 @@ app.get('/api/files/download', async (req, res) => {
 
 app.delete('/api/files', async (req, res) => {
   try {
-    const folderPath = cleanPath(req.body.path);
+    const storageKey = encodePath(cleanPath(req.body.path));
     const names = req.body.names || [];
-    const paths = names.map(n => (folderPath ? folderPath + '/' + n : n));
+    const paths = names.map(n => (storageKey ? storageKey + '/' + encodeName(n) : encodeName(n)));
     const { error } = await supabase.storage.from(BUCKET).remove(paths);
     if (error) throw new Error(error.message);
     res.json({ ok: true });
@@ -193,10 +223,10 @@ app.delete('/api/files', async (req, res) => {
 
 app.patch('/api/files/rename', async (req, res) => {
   try {
-    const folderPath = cleanPath(req.body.path);
+    const storageKey = encodePath(cleanPath(req.body.path));
     const { oldName, newName } = req.body;
-    const from = folderPath ? folderPath + '/' + oldName : oldName;
-    const to = folderPath ? folderPath + '/' + newName : newName;
+    const from = storageKey ? storageKey + '/' + encodeName(oldName) : encodeName(oldName);
+    const to = storageKey ? storageKey + '/' + encodeName(newName) : encodeName(newName);
     const { error } = await supabase.storage.from(BUCKET).move(from, to);
     if (error) throw new Error(error.message);
     res.json({ ok: true });
@@ -207,12 +237,12 @@ app.patch('/api/files/rename', async (req, res) => {
 
 app.post('/api/files/move', async (req, res) => {
   try {
-    const folderPath = cleanPath(req.body.path);
-    const destPath = cleanPath(req.body.destPath);
+    const storageKey = encodePath(cleanPath(req.body.path));
+    const destStorageKey = encodePath(cleanPath(req.body.destPath));
     const names = req.body.names || [];
     for (const name of names) {
-      const from = folderPath ? folderPath + '/' + name : name;
-      const to = destPath ? destPath + '/' + name : name;
+      const from = storageKey ? storageKey + '/' + encodeName(name) : encodeName(name);
+      const to = destStorageKey ? destStorageKey + '/' + encodeName(name) : encodeName(name);
       const { error } = await supabase.storage.from(BUCKET).move(from, to);
       if (error) throw new Error(error.message);
     }
