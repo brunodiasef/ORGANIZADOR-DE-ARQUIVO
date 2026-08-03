@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Organizador Escolar</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#26344D">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap');
   :root{
@@ -91,7 +95,10 @@
 <div id="app" style="display:none;">
   <header class="bar">
     <h1>📚 Meus Estudos</h1>
-    <button class="btn logout" id="logoutBtn">Sair</button>
+    <div style="display:flex;gap:10px;">
+      <button class="btn" id="installBtn" style="display:none;">⬇ Instalar app</button>
+      <button class="btn logout" id="logoutBtn">Sair</button>
+    </div>
   </header>
 
   <div class="layout">
@@ -489,8 +496,35 @@ els.fileInput.onchange = async (e)=>{
   els.fileInput.value = '';
 };
 
+// ---------- Instalar como app (PWA) ----------
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+
+let deferredInstallPrompt = null;
+const installBtn = document.getElementById('installBtn');
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  installBtn.style.display = 'inline-block';
+});
+
+installBtn.onclick = async () => {
+  if (!deferredInstallPrompt) return;
+  installBtn.style.display = 'none';
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+};
+
+window.addEventListener('appinstalled', () => {
+  installBtn.style.display = 'none';
+});
+
 // ---------- Início ----------
 if(token){ showApp(); }
+
 </script>
 </body>
 </html>
