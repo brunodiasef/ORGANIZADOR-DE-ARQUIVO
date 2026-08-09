@@ -166,7 +166,7 @@
   }
   .top-row h2{font-size:1.4rem;margin:0;}
   .top-row span.count{font-size:.8rem;color:var(--text-muted);}
-  #addFileBtn.desktop-only{display:inline-flex;align-items:center;gap:8px;}
+  #addFileBtn{display:inline-flex;align-items:center;gap:8px;}
 
   .selection-bar{
     display:flex;flex-wrap:wrap;align-items:center;gap:10px;
@@ -214,6 +214,20 @@
   .kebab-menu button:hover{background:var(--surface-2);}
   .kebab-menu button.danger{color:var(--danger);}
 
+  .add-wrap{position:relative;}
+  .add-menu{
+    display:none;position:absolute;right:0;top:calc(100% + 6px);
+    background:var(--surface-3);border:1px solid var(--border);border-radius:var(--radius-sm);
+    box-shadow:var(--shadow-2);min-width:170px;z-index:30;overflow:hidden;
+  }
+  .add-menu.open{display:block;}
+  .add-menu button{
+    display:block;width:100%;text-align:left;background:none;border:none;color:var(--text);
+    padding:11px 14px;font-size:.85rem;cursor:pointer;
+  }
+  .add-menu button:hover{background:var(--surface-2);}
+  #fabAddMenu{position:fixed;right:20px;bottom:88px;top:auto;left:auto;}
+
   .tab-chip{
     display:inline-flex;align-items:center;justify-content:center;
     min-width:36px;height:22px;padding:0 6px;border-radius:6px;flex-shrink:0;
@@ -246,7 +260,7 @@
     }
     aside.open{transform:translateX(0);}
     #drawerOverlay.open{display:block;}
-    #addFileBtn.desktop-only{display:none;}
+    .add-wrap.desktop-only{display:none;}
     #fabAdd{display:flex;align-items:center;justify-content:center;}
     main{padding:18px 16px 120px;}
     .grid{gap:5px;}
@@ -297,8 +311,15 @@
           <h2 id="folderTitle">—</h2>
           <span class="count" id="fileCount"></span>
         </div>
-        <button class="primary-btn desktop-only" id="addFileBtn">+ Adicionar arquivos</button>
+        <div class="add-wrap desktop-only">
+          <button class="primary-btn" id="addFileBtn">+ Adicionar</button>
+          <div class="add-menu" id="addMenu">
+            <button data-add="files">📄 Arquivos</button>
+            <button data-add="folder">📁 Pasta inteira</button>
+          </div>
+        </div>
         <input type="file" id="fileInput" multiple style="display:none;">
+        <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none;">
       </div>
 
       <div class="selection-bar" id="selectionBar" style="display:none;">
@@ -314,6 +335,10 @@
   </div>
 
   <button id="fabAdd" aria-label="Adicionar arquivos">+</button>
+  <div class="add-menu" id="fabAddMenu">
+    <button data-add="files">📄 Arquivos</button>
+    <button data-add="folder">📁 Pasta inteira</button>
+  </div>
 </div>
 
 <script>
@@ -682,21 +707,56 @@ els.deleteSelectedBtn.onclick = ()=> excluirArquivos([...selectedFiles]);
 els.moveSelectedBtn.onclick = ()=> moverArquivos([...selectedFiles]);
 
 // ---------- Adicionar arquivos ----------
-function triggerFileInput(){ els.fileInput.click(); }
-els.addFileBtn.onclick = triggerFileInput;
-els.fabAdd.onclick = triggerFileInput;
+const addMenu = document.getElementById('addMenu');
+const fabAddMenu = document.getElementById('fabAddMenu');
 
-els.fileInput.onchange = async (e)=>{
-  const files = [...e.target.files];
+function closeAddMenus(){ addMenu.classList.remove('open'); fabAddMenu.classList.remove('open'); }
+
+els.addFileBtn.onclick = (e)=>{
+  e.stopPropagation();
+  const wasOpen = addMenu.classList.contains('open');
+  closeAddMenus();
+  if(!wasOpen) addMenu.classList.add('open');
+};
+els.fabAdd.onclick = (e)=>{
+  e.stopPropagation();
+  const wasOpen = fabAddMenu.classList.contains('open');
+  closeAddMenus();
+  if(!wasOpen) fabAddMenu.classList.add('open');
+};
+document.addEventListener('click', closeAddMenus);
+
+[addMenu, fabAddMenu].forEach(menu=>{
+  menu.querySelector('[data-add="files"]').onclick = (e)=>{ e.stopPropagation(); closeAddMenus(); els.fileInput.click(); };
+  menu.querySelector('[data-add="folder"]').onclick = (e)=>{ e.stopPropagation(); closeAddMenus(); document.getElementById('folderInput').click(); };
+});
+
+async function enviarArquivos(files, comCaminhoRelativo){
   if(!files.length || !currentPath) return;
   const form = new FormData();
   form.append('path', currentPath.join('/'));
   files.forEach(f=> form.append('files', f));
+  if(comCaminhoRelativo){
+    const relpaths = files.map(f=> f.webkitRelativePath || f.name);
+    form.append('relpaths', JSON.stringify(relpaths));
+  }
   try{
     await api('/api/files', {method:'POST', body: form});
     await renderFiles();
+    await renderTree(false);
   }catch(e){ alert('Não consegui enviar: ' + e.message); }
+}
+
+els.fileInput.onchange = async (e)=>{
+  const files = [...e.target.files];
+  await enviarArquivos(files, false);
   els.fileInput.value = '';
+};
+
+document.getElementById('folderInput').onchange = async (e)=>{
+  const files = [...e.target.files];
+  await enviarArquivos(files, true);
+  e.target.value = '';
 };
 
 // ---------- Instalar como app (PWA) ----------
