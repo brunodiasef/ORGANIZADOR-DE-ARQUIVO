@@ -181,8 +181,23 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200
 app.post('/api/files', upload.array('files'), async (req, res) => {
   try {
     const storageKey = encodePath(cleanPath(req.body.path));
-    for (const f of req.files) {
-      const filePath = storageKey ? storageKey + '/' + encodeName(f.originalname) : encodeName(f.originalname);
+    // relpaths: array JSON opcional, mesma ordem dos arquivos, com o caminho
+    // relativo dentro da pasta selecionada (ex: "MinhaPasta/Sub/arquivo.pdf").
+    // Enviado quando o usuário escolhe "Adicionar pasta" em vez de arquivos soltos.
+    let relpaths = [];
+    if (req.body.relpaths) {
+      try { relpaths = JSON.parse(req.body.relpaths); } catch (e) { relpaths = []; }
+    }
+    for (let i = 0; i < req.files.length; i++) {
+      const f = req.files[i];
+      const rel = relpaths[i];
+      let filePath;
+      if (rel) {
+        const segments = rel.split('/').filter(Boolean).map(encodeName);
+        filePath = storageKey ? storageKey + '/' + segments.join('/') : segments.join('/');
+      } else {
+        filePath = storageKey ? storageKey + '/' + encodeName(f.originalname) : encodeName(f.originalname);
+      }
       const { error } = await supabase.storage.from(BUCKET).upload(filePath, f.buffer, {
         upsert: true,
         contentType: f.mimetype || 'application/octet-stream',
