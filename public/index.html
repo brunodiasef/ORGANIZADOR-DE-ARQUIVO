@@ -125,10 +125,10 @@
     min-height:calc(100vh - 61px);
   }
   aside p.sub{font-size:.7rem;text-transform:uppercase;letter-spacing:.09em;color:var(--text-faint);margin:0 0 14px;padding:0 6px;}
-  #folderTree ul{list-style:none;margin:0;padding-left:16px;}
+  #folderTree ul{list-style:none;margin:0;padding-left:14px;}
   #folderTree > ul{padding-left:0;}
   .folder-row{
-    display:flex;align-items:center;gap:4px;padding:9px 8px;border-radius:var(--radius-sm);
+    display:flex;align-items:center;gap:4px;padding:5px 8px;border-radius:var(--radius-sm);
     cursor:pointer;font-size:.88rem;color:var(--text-muted);
   }
   .folder-row:hover{background:var(--surface-2);color:var(--text);}
@@ -182,17 +182,18 @@
   .selection-bar button:hover{background:var(--surface-3);}
   .selection-bar button.danger-bar{background:var(--danger-soft);color:var(--danger);border-color:transparent;}
 
-  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
+  .grid{display:flex;flex-direction:column;gap:6px;}
 
   .card{
-    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);
-    padding:16px;position:relative;box-shadow:var(--shadow-1);
-    transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-md);
+    padding:9px 12px;position:relative;box-shadow:none;
+    transition:background .12s ease, border-color .12s ease;
     cursor:pointer;
+    display:flex;align-items:center;gap:10px;
   }
-  .card:hover{transform:translateY(-2px);box-shadow:var(--shadow-2);border-color:var(--surface-3);}
+  .card:hover{background:var(--surface-2);border-color:var(--surface-3);}
   .card.selected{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft);}
-  .card-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;}
+  .card-top{display:flex;align-items:center;gap:6px;order:3;margin-left:auto;}
   .card .select-check{width:19px;height:19px;cursor:pointer;accent-color:var(--accent);}
   .kebab-wrap{position:relative;}
   .kebab-btn{
@@ -215,12 +216,12 @@
 
   .tab-chip{
     display:inline-flex;align-items:center;justify-content:center;
-    min-width:44px;height:30px;padding:0 8px;border-radius:8px 8px 3px 3px;
-    font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:.68rem;color:#1a1a1a;
-    margin-bottom:12px;letter-spacing:.02em;
+    min-width:36px;height:22px;padding:0 6px;border-radius:6px;flex-shrink:0;
+    font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:.62rem;color:#1a1a1a;
+    letter-spacing:.02em;
   }
-  .card h3{font-size:.9rem;margin:0 0 4px;font-weight:600;word-break:break-word;line-height:1.3;}
-  .card .path{font-size:.72rem;color:var(--text-faint);word-break:break-all;font-family:'IBM Plex Mono',monospace;}
+  .card h3{font-size:.88rem;margin:0;font-weight:500;word-break:break-word;line-height:1.3;flex:1;min-width:0;}
+  .card .path{display:none;}
   .empty{color:var(--text-faint);font-size:.9rem;padding:30px 0;text-align:center;}
 
   /* ---------- Floating action button (mobile) ---------- */
@@ -248,8 +249,8 @@
     #addFileBtn.desktop-only{display:none;}
     #fabAdd{display:flex;align-items:center;justify-content:center;}
     main{padding:18px 16px 120px;}
-    .grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;}
-    .card{padding:13px;border-radius:var(--radius-md);}
+    .grid{gap:5px;}
+    .card{padding:8px 10px;}
     .top-row h2{font-size:1.2rem;}
   }
 </style>
