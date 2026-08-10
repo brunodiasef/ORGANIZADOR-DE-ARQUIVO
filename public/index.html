@@ -366,6 +366,15 @@ let currentFilesMap = new Map();
 let selectedFiles = new Set();
 let openMenuEl = null;
 
+function findTreeNode(pathArr, nodes = treeData){
+  if(!pathArr || !pathArr.length) return null;
+  const [head, ...rest] = pathArr;
+  const node = nodes.find(n => n.name === head);
+  if(!node) return null;
+  if(rest.length === 0) return node;
+  return findTreeNode(rest, node.children);
+}
+
 const els = {
   loginScreen: document.getElementById('loginScreen'),
   app: document.getElementById('app'),
@@ -601,17 +610,38 @@ async function renderFiles(){
   currentFilesMap = new Map();
   updateSelectionBar();
   if(!currentPath) return;
+  const node = findTreeNode(currentPath);
+  const subfolders = node ? node.children : [];
   const res = await api('/api/files?path=' + encodeURIComponent(currentPath.join('/')));
   const data = await res.json();
-  els.fileCount.textContent = data.files.length + (data.files.length===1 ? ' arquivo' : ' arquivos');
-  if(!data.files.length){
+
+  const parts = [];
+  if(subfolders.length) parts.push(subfolders.length + (subfolders.length === 1 ? ' pasta' : ' pastas'));
+  parts.push(data.files.length + (data.files.length === 1 ? ' arquivo' : ' arquivos'));
+  els.fileCount.textContent = parts.join(' · ');
+
+  if(!subfolders.length && !data.files.length){
     els.grid.innerHTML = '<p class="empty">Nenhum arquivo nesta pasta ainda.</p>';
     return;
+  }
+  for(const sf of subfolders){
+    els.grid.appendChild(buildFolderCard(sf));
   }
   for(const f of data.files){
     currentFilesMap.set(f.name, f);
     els.grid.appendChild(buildCard(f.name));
   }
+}
+
+function buildFolderCard(node){
+  const card = document.createElement('div');
+  card.className = 'card folder-card';
+  card.innerHTML = `
+    <div class="tab-chip" style="background:var(--accent-soft);color:var(--accent);">PASTA</div>
+    <h3>${escapeHtml(node.name)}</h3>
+  `;
+  card.onclick = ()=> selectFolder([...currentPath, node.name]);
+  return card;
 }
 
 function closeOpenMenu(){
