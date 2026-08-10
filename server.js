@@ -89,13 +89,16 @@ function isFolderEntry(entry) {
 
 async function buildTree(storagePrefix) {
   const entries = await listFolder(storagePrefix);
-  const folders = entries.filter(isFolderEntry).filter(e => e.name !== PLACEHOLDER);
-  folders.sort((a, b) => a.name.localeCompare(b.name));
+  const folders = entries
+    .filter(isFolderEntry)
+    .filter(e => e.name !== PLACEHOLDER)
+    .map(e => ({ encodedName: e.name, name: decodeName(e.name) }));
+  folders.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
   const out = [];
   for (const f of folders) {
-    const childStorage = storagePrefix ? storagePrefix + '/' + f.name : f.name;
+    const childStorage = storagePrefix ? storagePrefix + '/' + f.encodedName : f.encodedName;
     out.push({
-      name: decodeName(f.name),
+      name: f.name,
       path: decodePath(childStorage),
       children: await buildTree(childStorage),
     });
@@ -115,6 +118,21 @@ async function collectAllPaths(storagePrefix, out) {
   }
 }
 
+// Move todo o conteúdo de uma pasta (recursivamente, incluindo os .keep de
+// subpastas vazias) de uma "storage key" para outra. Usado tanto para
+// renomear quanto para mover pastas (Supabase não tem essas operações prontas
+// para pastas, só para arquivos individuais).
+async function moveFolderStorage(oldStorageKey, newStorageKey) {
+  const allFiles = [];
+  await collectAllPaths(oldStorageKey, allFiles);
+  for (const from of allFiles) {
+    const rel = from.slice(oldStorageKey.length); // ex: "/.keep" ou "/sub/arquivo.pdf"
+    const to = newStorageKey + rel;
+    const { error } = await supabase.storage.from(BUCKET).move(from, to);
+    if (error) throw new Error(error.message);
+  }
+}
+
 // ---------- Rotas ----------
 app.get('/api/tree', async (req, res) => {
   try {
@@ -131,7 +149,7 @@ app.get('/api/files', async (req, res) => {
     const files = entries
       .filter(e => !isFolderEntry(e) && e.name !== PLACEHOLDER)
       .map(e => ({ name: decodeName(e.name), size: e.metadata?.size || 0, modified: e.updated_at || e.created_at }));
-    files.sort((a, b) => a.name.localeCompare(b.name));
+    files.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
     res.json({ files });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -265,20 +283,30 @@ app.patch('/api/folder/rename', async (req, res) => {
     const parentStorage = encodePath(parentLogical);
     const oldStorageKey = parentStorage ? parentStorage + '/' + encodeName(oldName) : encodeName(oldName);
     const newStorageKey = parentStorage ? parentStorage + '/' + encodeName(newName) : encodeName(newName);
-
-    // Supabase não tem "renomear pasta": movemos cada arquivo (recursivamente,
-    // incluindo os .keep de subpastas vazias) do caminho antigo para o novo.
-    const allFiles = [];
-    await collectAllPaths(oldStorageKey, allFiles);
-    for (const from of allFiles) {
-      const rel = from.slice(oldStorageKey.length); // ex: "/.keep" ou "/sub/arquivo.pdf"
-      const to = newStorageKey + rel;
-      const { error } = await supabase.storage.from(BUCKET).move(from, to);
-      if (error) throw new Error(error.message);
-    }
+    await moveFolderStorage(oldStorageKey, newStorageKey);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message.includes('already exists') ? 'Já existe uma pasta com esse nome' : e.message });
+  }
+});
+
+app.post('/api/folder/move', async (req, res) => {
+  try {
+    const parentLogical = cleanPath(req.body.path);
+    const name = (req.body.name || '').trim();
+    const destLogical = cleanPath(req.body.destPath);
+    if (!name) return res.status(400).json({ error: 'Pasta não informada' });
+    const parentStorage = encodePath(parentLogical);
+    const oldStorageKey = parentStorage ? parentStorage + '/' + encodeName(name) : encodeName(name);
+    const destStorage = encodePath(destLogical);
+    if (destStorage === oldStorageKey || destStorage.startsWith(oldStorageKey + '/')) {
+      return res.status(400).json({ error: 'Não é possível mover uma pasta para dentro dela mesma' });
+    }
+    const newStorageKey = destStorage ? destStorage + '/' + encodeName(name) : encodeName(name);
+    await moveFolderStorage(oldStorageKey, newStorageKey);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message.includes('already exists') ? 'Já existe uma pasta com esse nome no destino' : e.message });
   }
 });
 
