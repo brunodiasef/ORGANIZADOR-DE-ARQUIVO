@@ -567,7 +567,6 @@ async function selectFolder(pathArr){
   currentPath = pathArr;
   renderBreadcrumb();
   els.folderTitle.textContent = pathArr[pathArr.length - 1];
-  await renderFiles();
   await renderTree(false);
 }
 
@@ -810,7 +809,6 @@ async function enviarArquivos(files, comCaminhoRelativo){
   }
   try{
     await api('/api/files', {method:'POST', body: form});
-    await renderFiles();
     await renderTree(false);
   }catch(e){ alert('Não consegui enviar: ' + e.message); }
 }
