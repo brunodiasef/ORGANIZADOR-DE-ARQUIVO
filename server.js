@@ -253,6 +253,35 @@ app.patch('/api/files/rename', async (req, res) => {
   }
 });
 
+app.patch('/api/folder/rename', async (req, res) => {
+  try {
+    const parentLogical = cleanPath(req.body.path);
+    const oldName = (req.body.oldName || '').trim();
+    const newName = (req.body.newName || '').trim();
+    if (!oldName) return res.status(400).json({ error: 'Pasta original não informada' });
+    if (!newName || newName.includes('/') || newName.includes('\\')) {
+      return res.status(400).json({ error: 'Nome de pasta inválido' });
+    }
+    const parentStorage = encodePath(parentLogical);
+    const oldStorageKey = parentStorage ? parentStorage + '/' + encodeName(oldName) : encodeName(oldName);
+    const newStorageKey = parentStorage ? parentStorage + '/' + encodeName(newName) : encodeName(newName);
+
+    // Supabase não tem "renomear pasta": movemos cada arquivo (recursivamente,
+    // incluindo os .keep de subpastas vazias) do caminho antigo para o novo.
+    const allFiles = [];
+    await collectAllPaths(oldStorageKey, allFiles);
+    for (const from of allFiles) {
+      const rel = from.slice(oldStorageKey.length); // ex: "/.keep" ou "/sub/arquivo.pdf"
+      const to = newStorageKey + rel;
+      const { error } = await supabase.storage.from(BUCKET).move(from, to);
+      if (error) throw new Error(error.message);
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message.includes('already exists') ? 'Já existe uma pasta com esse nome' : e.message });
+  }
+});
+
 app.post('/api/files/move', async (req, res) => {
   try {
     const storageKey = encodePath(cleanPath(req.body.path));
