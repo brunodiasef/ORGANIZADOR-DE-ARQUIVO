@@ -136,6 +136,8 @@
   .folder-row:focus,.folder-row *:focus{outline:none;}
   .folder-row:hover{background:var(--surface-2);color:var(--text);}
   .folder-row.active{background:var(--accent-soft);color:var(--accent);font-weight:600;}
+  .folder-row.selected{box-shadow:inset 3px 0 0 var(--accent);}
+  .folder-select{width:14px;height:14px;flex-shrink:0;cursor:pointer;accent-color:var(--accent);-webkit-tap-highlight-color:transparent;}
   .twisty{width:16px;height:16px;flex-shrink:0;font-size:.9rem;text-align:center;color:var(--text-faint);line-height:16px;-webkit-tap-highlight-color:transparent;overflow:hidden;}
   .twisty.empty{visibility:hidden;}
   .folder-glyph{flex-shrink:0;width:16px;height:16px;opacity:.8;}
@@ -315,6 +317,12 @@
     <aside id="sidebar">
       <p class="sub">Pastas</p>
       <div id="folderTree"></div>
+      <div class="selection-bar" id="folderSelectionBar" style="display:none;">
+        <span id="folderSelectionCount"></span>
+        <button id="moveFoldersBtn">Mover</button>
+        <button id="deleteFoldersBtn" class="danger-bar">Excluir</button>
+        <button id="clearFolderSelectionBtn">Cancelar</button>
+      </div>
       <button class="add-folder" id="addFolderBtn">+ Nova pasta</button>
     </aside>
 
@@ -364,6 +372,7 @@ let expandedPaths = new Set();
 let treeData = [];
 let currentFilesMap = new Map();
 let selectedFiles = new Set();
+let selectedFolders = new Map(); // childKey -> {parentPath: string[], name: string}
 let openMenuEl = null;
 
 function findTreeNode(pathArr, nodes = treeData){
@@ -387,6 +396,11 @@ const els = {
   drawerOverlay: document.getElementById('drawerOverlay'),
   folderTree: document.getElementById('folderTree'),
   addFolderBtn: document.getElementById('addFolderBtn'),
+  folderSelectionBar: document.getElementById('folderSelectionBar'),
+  folderSelectionCount: document.getElementById('folderSelectionCount'),
+  moveFoldersBtn: document.getElementById('moveFoldersBtn'),
+  deleteFoldersBtn: document.getElementById('deleteFoldersBtn'),
+  clearFolderSelectionBtn: document.getElementById('clearFolderSelectionBtn'),
   grid: document.getElementById('grid'),
   breadcrumb: document.getElementById('breadcrumb'),
   folderTitle: document.getElementById('folderTitle'),
@@ -483,14 +497,21 @@ function buildTreeUl(nodes, pathArr){
 
     const li = document.createElement('li');
     const row = document.createElement('div');
-    row.className = 'folder-row' + (isActive ? ' active' : '');
+    const isSelected = selectedFolders.has(childKey);
+    row.className = 'folder-row' + (isActive ? ' active' : '') + (isSelected ? ' selected' : '');
     row.innerHTML = `
       <span class="twisty ${hasChildren ? '' : 'empty'}">${isExpanded ? '▾' : '▸'}</span>
+      <input type="checkbox" class="folder-select" title="Selecionar pasta" ${isSelected ? 'checked' : ''}>
       <span class="fname">${escapeHtml(node.name)}</span>
       <button class="mini-edit" title="Renomear pasta">✎</button>
       <button class="mini-add" title="Nova subpasta">+</button>
       <button class="mini-del" title="Excluir pasta">✕</button>
     `;
+    row.querySelector('.folder-select').onclick = (e)=> e.stopPropagation();
+    row.querySelector('.folder-select').onchange = (e)=>{
+      toggleFolderSelection(childKey, pathArr, node.name, e.target.checked);
+      row.classList.toggle('selected', e.target.checked);
+    };
     row.querySelector('.twisty').onclick = (e)=>{
       e.stopPropagation();
       if(!hasChildren) return;
@@ -515,6 +536,10 @@ function buildTreeUl(nodes, pathArr){
           expandedPaths.delete(childKey);
           expandedPaths.add([...pathArr, newName].join('/'));
         }
+        if(selectedFolders.has(childKey)){
+          selectedFolders.delete(childKey);
+          selectedFolders.set([...pathArr, newName].join('/'), {parentPath: pathArr, name: newName});
+        }
         await renderTree(false);
       }catch(err){ alert('Não consegui renomear a pasta: ' + err.message); }
     };
@@ -534,6 +559,8 @@ function buildTreeUl(nodes, pathArr){
       try{
         await api('/api/folder', {method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: childKey})});
         expandedPaths.delete(childKey);
+        selectedFolders.delete(childKey);
+        updateFolderSelectionBar();
         if(currentPath && currentPath.join('/').startsWith(childKey)) currentPath = null;
         await renderTree();
       }catch(err){ alert('Não consegui excluir: ' + err.message); }
@@ -569,6 +596,68 @@ async function selectFolder(pathArr){
   els.folderTitle.textContent = pathArr[pathArr.length - 1];
   await renderTree(false);
 }
+
+// ---------- Seleção múltipla de pastas ----------
+function toggleFolderSelection(childKey, parentPath, name, checked){
+  checked ? selectedFolders.set(childKey, {parentPath, name}) : selectedFolders.delete(childKey);
+  updateFolderSelectionBar();
+}
+
+function updateFolderSelectionBar(){
+  const n = selectedFolders.size;
+  els.folderSelectionBar.style.display = n > 0 ? 'flex' : 'none';
+  els.folderSelectionCount.textContent = n + (n === 1 ? ' pasta selecionada' : ' pastas selecionadas');
+}
+
+els.clearFolderSelectionBtn.onclick = ()=>{
+  selectedFolders.clear();
+  updateFolderSelectionBar();
+  renderTree(false);
+};
+
+els.deleteFoldersBtn.onclick = async ()=>{
+  const items = [...selectedFolders.entries()];
+  if(!items.length) return;
+  const nomes = items.map(([key])=> key).join('\n');
+  if(!confirm('Excluir ' + items.length + ' pasta(s) e tudo que tem dentro delas? Essa ação não pode ser desfeita.\n\n' + nomes)) return;
+  try{
+    for(const [childKey] of items){
+      await api('/api/folder', {method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: childKey})});
+      expandedPaths.delete(childKey);
+      if(currentPath && currentPath.join('/').startsWith(childKey)) currentPath = null;
+    }
+    selectedFolders.clear();
+    updateFolderSelectionBar();
+    await renderTree();
+  }catch(err){ alert('Não consegui excluir: ' + err.message); }
+};
+
+els.moveFoldersBtn.onclick = async ()=>{
+  const items = [...selectedFolders.entries()];
+  if(!items.length) return;
+  const selectedKeys = items.map(([key])=> key);
+  const options = [''];
+  flattenFolders(treeData, [], options);
+  // Não pode mover uma pasta pra dentro dela mesma ou de uma subpasta dela
+  const filtered = options.filter(p=>{
+    if(p === '') return true; // nível principal
+    return !selectedKeys.some(sk => p === sk || p.split(' / ').join('/').startsWith(sk + '/'));
+  });
+  const listText = filtered.map((p,i)=> (i+1) + '. ' + (p === '' ? '(nível principal)' : p)).join('\n');
+  const escolha = prompt('Mover ' + items.length + ' pasta(s) para qual pasta? Digite o número:\n\n' + listText);
+  if(!escolha) return;
+  const idx = parseInt(escolha, 10) - 1;
+  if(isNaN(idx) || !(idx in filtered)) return;
+  const destPath = filtered[idx] === '' ? '' : filtered[idx].split(' / ').join('/');
+  try{
+    for(const [, info] of items){
+      await api('/api/folder/move', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: info.parentPath.join('/'), name: info.name, destPath})});
+    }
+    selectedFolders.clear();
+    updateFolderSelectionBar();
+    await renderTree(false);
+  }catch(err){ alert('Não consegui mover: ' + err.message); }
+};
 
 function renderBreadcrumb(){
   els.breadcrumb.innerHTML = '';
