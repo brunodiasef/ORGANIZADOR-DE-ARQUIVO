@@ -136,8 +136,6 @@
   .folder-row:focus,.folder-row *:focus{outline:none;}
   .folder-row:hover{background:var(--surface-2);color:var(--text);}
   .folder-row.active{background:var(--accent-soft);color:var(--accent);font-weight:600;}
-  .folder-row.selected{box-shadow:inset 3px 0 0 var(--accent);}
-  .folder-select{width:14px;height:14px;flex-shrink:0;cursor:pointer;accent-color:var(--accent);-webkit-tap-highlight-color:transparent;}
   .twisty{width:16px;height:16px;flex-shrink:0;font-size:.9rem;text-align:center;color:var(--text-faint);line-height:16px;-webkit-tap-highlight-color:transparent;overflow:hidden;}
   .twisty.empty{visibility:hidden;}
   .folder-glyph{flex-shrink:0;width:16px;height:16px;opacity:.8;}
@@ -317,12 +315,6 @@
     <aside id="sidebar">
       <p class="sub">Pastas</p>
       <div id="folderTree"></div>
-      <div class="selection-bar" id="folderSelectionBar" style="display:none;">
-        <span id="folderSelectionCount"></span>
-        <button id="moveFoldersBtn">Mover</button>
-        <button id="deleteFoldersBtn" class="danger-bar">Excluir</button>
-        <button id="clearFolderSelectionBtn">Cancelar</button>
-      </div>
       <button class="add-folder" id="addFolderBtn">+ Nova pasta</button>
     </aside>
 
@@ -342,6 +334,14 @@
         </div>
         <input type="file" id="fileInput" multiple style="display:none;">
         <input type="file" id="folderInput" webkitdirectory directory multiple style="display:none;">
+      </div>
+
+      <div class="selection-bar" id="folderCardSelectionBar" style="display:none;">
+        <span id="folderCardSelectionCount"></span>
+        <button id="selectAllFolderCardsBtn">Selecionar todos</button>
+        <button id="moveFolderCardsBtn">Mover</button>
+        <button id="deleteFolderCardsBtn" class="danger-bar">Excluir</button>
+        <button id="clearFolderCardSelectionBtn">Cancelar</button>
       </div>
 
       <div class="selection-bar" id="selectionBar" style="display:none;">
@@ -372,7 +372,8 @@ let expandedPaths = new Set();
 let treeData = [];
 let currentFilesMap = new Map();
 let selectedFiles = new Set();
-let selectedFolders = new Map(); // childKey -> {parentPath: string[], name: string}
+let currentSubfoldersMap = new Map(); // name -> node
+let selectedFolderCards = new Set(); // nomes das subpastas selecionadas na pasta atual
 let openMenuEl = null;
 
 function findTreeNode(pathArr, nodes = treeData){
@@ -396,11 +397,6 @@ const els = {
   drawerOverlay: document.getElementById('drawerOverlay'),
   folderTree: document.getElementById('folderTree'),
   addFolderBtn: document.getElementById('addFolderBtn'),
-  folderSelectionBar: document.getElementById('folderSelectionBar'),
-  folderSelectionCount: document.getElementById('folderSelectionCount'),
-  moveFoldersBtn: document.getElementById('moveFoldersBtn'),
-  deleteFoldersBtn: document.getElementById('deleteFoldersBtn'),
-  clearFolderSelectionBtn: document.getElementById('clearFolderSelectionBtn'),
   grid: document.getElementById('grid'),
   breadcrumb: document.getElementById('breadcrumb'),
   folderTitle: document.getElementById('folderTitle'),
@@ -408,6 +404,12 @@ const els = {
   addFileBtn: document.getElementById('addFileBtn'),
   fabAdd: document.getElementById('fabAdd'),
   fileInput: document.getElementById('fileInput'),
+  folderCardSelectionBar: document.getElementById('folderCardSelectionBar'),
+  folderCardSelectionCount: document.getElementById('folderCardSelectionCount'),
+  selectAllFolderCardsBtn: document.getElementById('selectAllFolderCardsBtn'),
+  moveFolderCardsBtn: document.getElementById('moveFolderCardsBtn'),
+  deleteFolderCardsBtn: document.getElementById('deleteFolderCardsBtn'),
+  clearFolderCardSelectionBtn: document.getElementById('clearFolderCardSelectionBtn'),
   selectionBar: document.getElementById('selectionBar'),
   selectionCount: document.getElementById('selectionCount'),
   selectAllBtn: document.getElementById('selectAllBtn'),
@@ -497,21 +499,14 @@ function buildTreeUl(nodes, pathArr){
 
     const li = document.createElement('li');
     const row = document.createElement('div');
-    const isSelected = selectedFolders.has(childKey);
-    row.className = 'folder-row' + (isActive ? ' active' : '') + (isSelected ? ' selected' : '');
+    row.className = 'folder-row' + (isActive ? ' active' : '');
     row.innerHTML = `
       <span class="twisty ${hasChildren ? '' : 'empty'}">${isExpanded ? '▾' : '▸'}</span>
-      <input type="checkbox" class="folder-select" title="Selecionar pasta" ${isSelected ? 'checked' : ''}>
       <span class="fname">${escapeHtml(node.name)}</span>
       <button class="mini-edit" title="Renomear pasta">✎</button>
       <button class="mini-add" title="Nova subpasta">+</button>
       <button class="mini-del" title="Excluir pasta">✕</button>
     `;
-    row.querySelector('.folder-select').onclick = (e)=> e.stopPropagation();
-    row.querySelector('.folder-select').onchange = (e)=>{
-      toggleFolderSelection(childKey, pathArr, node.name, e.target.checked);
-      row.classList.toggle('selected', e.target.checked);
-    };
     row.querySelector('.twisty').onclick = (e)=>{
       e.stopPropagation();
       if(!hasChildren) return;
@@ -536,10 +531,6 @@ function buildTreeUl(nodes, pathArr){
           expandedPaths.delete(childKey);
           expandedPaths.add([...pathArr, newName].join('/'));
         }
-        if(selectedFolders.has(childKey)){
-          selectedFolders.delete(childKey);
-          selectedFolders.set([...pathArr, newName].join('/'), {parentPath: pathArr, name: newName});
-        }
         await renderTree(false);
       }catch(err){ alert('Não consegui renomear a pasta: ' + err.message); }
     };
@@ -559,8 +550,6 @@ function buildTreeUl(nodes, pathArr){
       try{
         await api('/api/folder', {method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: childKey})});
         expandedPaths.delete(childKey);
-        selectedFolders.delete(childKey);
-        updateFolderSelectionBar();
         if(currentPath && currentPath.join('/').startsWith(childKey)) currentPath = null;
         await renderTree();
       }catch(err){ alert('Não consegui excluir: ' + err.message); }
@@ -597,64 +586,76 @@ async function selectFolder(pathArr){
   await renderTree(false);
 }
 
-// ---------- Seleção múltipla de pastas ----------
-function toggleFolderSelection(childKey, parentPath, name, checked){
-  checked ? selectedFolders.set(childKey, {parentPath, name}) : selectedFolders.delete(childKey);
-  updateFolderSelectionBar();
+// ---------- Seleção múltipla de subpastas (lado direito) ----------
+function toggleFolderCardSelection(name, checked){
+  checked ? selectedFolderCards.add(name) : selectedFolderCards.delete(name);
+  const card = els.grid.querySelector('[data-folder="' + CSS.escape(name) + '"]');
+  if(card) card.classList.toggle('selected', checked);
+  updateFolderCardSelectionBar();
 }
 
-function updateFolderSelectionBar(){
-  const n = selectedFolders.size;
-  els.folderSelectionBar.style.display = n > 0 ? 'flex' : 'none';
-  els.folderSelectionCount.textContent = n + (n === 1 ? ' pasta selecionada' : ' pastas selecionadas');
+function updateFolderCardSelectionBar(){
+  const n = selectedFolderCards.size;
+  els.folderCardSelectionBar.style.display = n > 0 ? 'flex' : 'none';
+  els.folderCardSelectionCount.textContent = n + (n === 1 ? ' pasta selecionada' : ' pastas selecionadas');
 }
 
-els.clearFolderSelectionBtn.onclick = ()=>{
-  selectedFolders.clear();
-  updateFolderSelectionBar();
-  renderTree(false);
+els.selectAllFolderCardsBtn.onclick = ()=>{
+  currentSubfoldersMap.forEach((_, name)=>{
+    selectedFolderCards.add(name);
+    const card = els.grid.querySelector('[data-folder="' + CSS.escape(name) + '"]');
+    if(card){ card.classList.add('selected'); card.querySelector('.select-check').checked = true; }
+  });
+  updateFolderCardSelectionBar();
 };
 
-els.deleteFoldersBtn.onclick = async ()=>{
-  const items = [...selectedFolders.entries()];
-  if(!items.length) return;
-  const nomes = items.map(([key])=> key).join('\n');
-  if(!confirm('Excluir ' + items.length + ' pasta(s) e tudo que tem dentro delas? Essa ação não pode ser desfeita.\n\n' + nomes)) return;
+els.clearFolderCardSelectionBtn.onclick = ()=>{
+  selectedFolderCards.clear();
+  els.grid.querySelectorAll('.folder-card .select-check').forEach(cb=> cb.checked = false);
+  els.grid.querySelectorAll('.folder-card').forEach(c=> c.classList.remove('selected'));
+  updateFolderCardSelectionBar();
+};
+
+els.deleteFolderCardsBtn.onclick = async ()=>{
+  const names = [...selectedFolderCards];
+  if(!names.length || !currentPath) return;
+  if(!confirm('Excluir ' + names.length + ' pasta(s) e tudo que tem dentro delas? Essa ação não pode ser desfeita.\n\n' + names.join('\n'))) return;
   try{
-    for(const [childKey] of items){
+    for(const name of names){
+      const childKey = [...currentPath, name].join('/');
       await api('/api/folder', {method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: childKey})});
       expandedPaths.delete(childKey);
-      if(currentPath && currentPath.join('/').startsWith(childKey)) currentPath = null;
     }
-    selectedFolders.clear();
-    updateFolderSelectionBar();
-    await renderTree();
+    selectedFolderCards.clear();
+    updateFolderCardSelectionBar();
+    await renderTree(false);
   }catch(err){ alert('Não consegui excluir: ' + err.message); }
 };
 
-els.moveFoldersBtn.onclick = async ()=>{
-  const items = [...selectedFolders.entries()];
-  if(!items.length) return;
-  const selectedKeys = items.map(([key])=> key);
+els.moveFolderCardsBtn.onclick = async ()=>{
+  const names = [...selectedFolderCards];
+  if(!names.length || !currentPath) return;
+  const selectedKeys = names.map(name => [...currentPath, name].join('/'));
   const options = [''];
   flattenFolders(treeData, [], options);
   // Não pode mover uma pasta pra dentro dela mesma ou de uma subpasta dela
   const filtered = options.filter(p=>{
     if(p === '') return true; // nível principal
-    return !selectedKeys.some(sk => p === sk || p.split(' / ').join('/').startsWith(sk + '/'));
+    const pKey = p.split(' / ').join('/');
+    return !selectedKeys.some(sk => pKey === sk || pKey.startsWith(sk + '/'));
   });
   const listText = filtered.map((p,i)=> (i+1) + '. ' + (p === '' ? '(nível principal)' : p)).join('\n');
-  const escolha = prompt('Mover ' + items.length + ' pasta(s) para qual pasta? Digite o número:\n\n' + listText);
+  const escolha = prompt('Mover ' + names.length + ' pasta(s) para qual pasta? Digite o número:\n\n' + listText);
   if(!escolha) return;
   const idx = parseInt(escolha, 10) - 1;
   if(isNaN(idx) || !(idx in filtered)) return;
   const destPath = filtered[idx] === '' ? '' : filtered[idx].split(' / ').join('/');
   try{
-    for(const [, info] of items){
-      await api('/api/folder/move', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: info.parentPath.join('/'), name: info.name, destPath})});
+    for(const name of names){
+      await api('/api/folder/move', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: currentPath.join('/'), name, destPath})});
     }
-    selectedFolders.clear();
-    updateFolderSelectionBar();
+    selectedFolderCards.clear();
+    updateFolderCardSelectionBar();
     await renderTree(false);
   }catch(err){ alert('Não consegui mover: ' + err.message); }
 };
@@ -696,7 +697,10 @@ async function renderFiles(){
   els.grid.innerHTML = '';
   selectedFiles.clear();
   currentFilesMap = new Map();
+  selectedFolderCards.clear();
+  currentSubfoldersMap = new Map();
   updateSelectionBar();
+  updateFolderCardSelectionBar();
   if(!currentPath) return;
   const node = findTreeNode(currentPath);
   const subfolders = node ? node.children : [];
@@ -713,6 +717,7 @@ async function renderFiles(){
     return;
   }
   for(const sf of subfolders){
+    currentSubfoldersMap.set(sf.name, sf);
     els.grid.appendChild(buildFolderCard(sf));
   }
   for(const f of data.files){
@@ -724,10 +729,16 @@ async function renderFiles(){
 function buildFolderCard(node){
   const card = document.createElement('div');
   card.className = 'card folder-card';
+  card.dataset.folder = node.name;
   card.innerHTML = `
+    <div class="card-top">
+      <input type="checkbox" class="select-check" title="Selecionar pasta">
+    </div>
     <div class="tab-chip" style="background:var(--accent-soft);color:var(--accent);">PASTA</div>
     <h3>${escapeHtml(node.name)}</h3>
   `;
+  card.querySelector('.select-check').onclick = (e)=> e.stopPropagation();
+  card.querySelector('.select-check').onchange = (e)=> toggleFolderCardSelection(node.name, e.target.checked);
   card.onclick = ()=> selectFolder([...currentPath, node.name]);
   return card;
 }
